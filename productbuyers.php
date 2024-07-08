@@ -9,7 +9,7 @@ class ProductBuyers extends Module
     {
         $this->name = 'productbuyers';
         $this->tab = 'administration';
-        $this->version = '0.4.0';
+        $this->version = '0.4.2';
         $this->author = 'SENDIX';
         $this->need_instance = 0;
 
@@ -37,68 +37,71 @@ class ProductBuyers extends Module
         return $output . $this->displayForm();
     }
 
-    public function displayForm()
-    {
-        $defaultLang = (int)Configuration::get('PS_LANG_DEFAULT');
+public function displayForm()
+{
+    $defaultLang = (int)Configuration::get('PS_LANG_DEFAULT');
 
-        $fieldsForm[0]['form'] = array(
-            'legend' => array(
-                'title' => $this->l('Enter Product ID'),
+    $fieldsForm[0]['form'] = array(
+        'legend' => array(
+            'title' => $this->l('Enter Product ID'),
+        ),
+        'input' => array(
+            array(
+                'type' => 'text',
+                'label' => $this->l('Product ID'),
+                'name' => 'PRODUCT_ID',
+                'size' => 20,
+                'required' => true
             ),
-            'input' => array(
-                array(
-                    'type' => 'text',
-                    'label' => $this->l('Product ID'),
-                    'name' => 'PRODUCT_ID',
-                    'size' => 20,
-                    'required' => true
-                ),
-            ),
-            'submit' => array(
-                'title' => $this->l('Search'),
-                'class' => 'btn btn-default pull-right'
-            )
-        );
+        ),
+        'submit' => array(
+            'title' => $this->l('Search'),
+            'class' => 'btn btn-default pull-right'
+        )
+    );
 
-        $fieldsForm[1]['form'] = array(
-            'legend' => array(
-                'title' => $this->l('Search Product by Name'),
+    $fieldsForm[1]['form'] = array(
+        'legend' => array(
+            'title' => $this->l('Search Product by Name'),
+        ),
+        'input' => array(
+            array(
+                'type' => 'text',
+                'label' => $this->l('Product Name'),
+                'name' => 'PRODUCT_NAME',
+                'size' => 20,
+                'required' => true,
+                'id' => 'product_name'
             ),
-            'input' => array(
-                array(
-                    'type' => 'text',
-                    'label' => $this->l('Product Name'),
-                    'name' => 'PRODUCT_NAME',
-                    'size' => 20,
-                    'required' => true,
-                    'id' => 'product_name'
-                ),
-            ),
-            'button' => array(
+        ),
+        'buttons' => array(
+            array(
                 'type' => 'button',
+                'title' => $this->l('Search'),
                 'class' => 'btn btn-default pull-right',
-                'id' => 'search_product_button',
-                'title' => $this->l('Search')
-            )
-        );
+                'id' => 'search_product_button'
+            ),
+        )
+    );
 
-        $helper = new HelperForm();
+    $helper = new HelperForm();
 
-        $helper->show_toolbar = false;
-        $helper->table = $this->table;
-        $helper->module = $this;
-        $helper->default_form_language = $defaultLang;
-        $helper->allow_employee_form_lang = $defaultLang;
-        $helper->identifier = $this->identifier;
-        $helper->submit_action = 'submit_productbuyers';
-        $helper->currentIndex = $this->context->link->getAdminLink('AdminModules', false)
-            . '&configure=' . $this->name . '&tab_module=' . $this->tab . '&module_name=' . $this->name;
-        $helper->token = Tools::getAdminTokenLite('AdminModules');
+    $helper->show_toolbar = false;
+    $helper->table = $this->table;
+    $helper->module = $this;
+    $helper->default_form_language = $defaultLang;
+    $helper->allow_employee_form_lang = $defaultLang;
+    $helper->identifier = $this->identifier;
+    $helper->submit_action = 'submit_productbuyers';
+    $helper->currentIndex = $this->context->link->getAdminLink('AdminModules', false)
+        . '&configure=' . $this->name . '&tab_module=' . $this->tab . '&module_name=' . $this->name;
+    $helper->token = Tools::getAdminTokenLite('AdminModules');
 
-        $this->context->controller->addJS($this->_path.'views/js/productbuyers.js');
+    $this->context->controller->addJS($this->_path.'views/js/productbuyers.js');
+    $this->context->controller->addJS('var baseUri = "' . $this->context->link->getAdminLink('AdminModules', false) . '";');
 
-        return $helper->generateForm($fieldsForm);
-    }
+    return $helper->generateForm($fieldsForm);
+}
 
     public function displayBuyers($productId)
     {
