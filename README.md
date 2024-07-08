@@ -1,0 +1,2 @@
+Recherche de produit par nom : Dans le formulaire de configuration, entrez le nom du produit que vous souhaitez rechercher et cliquez sur "Search". Les résultats seront affichés en dessous du champ de recherche sans recharger la page.
+Saisie de l'ID du produit : Utilisez l'ID trouvé pour entrer dans le champ "Product ID" et cliquez sur "Search" pour obtenir la liste des clients ayant acheté ce produit.
