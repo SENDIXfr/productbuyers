@@ -9,11 +9,10 @@ class ProductBuyers extends Module
     {
         $this->name = 'productbuyers';
         $this->tab = 'administration';
-        $this->version = '0.5.2';
+        $this->version = '0.6.0';
         $this->author = 'SENDIX';
         $this->ps_versions_compliancy = array('min' => '1.7.0.0', 'max' => _PS_VERSION_);
         $this->need_instance = 0;
-        $this->icon = 'logo.png';
         $this->bootstrap = true;
 
         parent::__construct();
@@ -55,26 +54,8 @@ class ProductBuyers extends Module
 
         $fieldsForm[0]['form'] = array(
             'legend' => array(
-                'title' => $this->l('Enter Product ID'),
-            ),
-            'input' => array(
-                array(
-                    'type' => 'text',
-                    'label' => $this->l('Product ID'),
-                    'name' => 'PRODUCT_ID',
-                    'size' => 20,
-                    'required' => true
-                ),
-            ),
-            'submit' => array(
-                'title' => $this->l('Search'),
-                'class' => 'btn btn-default pull-right'
-            )
-        );
-
-        $fieldsForm[1]['form'] = array(
-            'legend' => array(
                 'title' => $this->l('Search Product by Name or Reference'),
+                'icon' => 'icon-search'
             ),
             'input' => array(
                 array(
@@ -83,16 +64,38 @@ class ProductBuyers extends Module
                     'name' => 'PRODUCT_NAME',
                     'size' => 20,
                     'required' => true,
-                    'id' => 'product_name'
+                    'id' => 'product_name',
+                    'class' => 'form-control'
                 ),
             ),
             'buttons' => array(
                 array(
                     'type' => 'button',
                     'title' => $this->l('Search'),
-                    'class' => 'btn btn-default pull-right',
+                    'class' => 'btn btn-primary pull-right',
                     'id' => 'search_product_button'
                 ),
+            )
+        );
+
+        $fieldsForm[1]['form'] = array(
+            'legend' => array(
+                'title' => $this->l('Enter Product ID'),
+                'icon' => 'icon-cogs'
+            ),
+            'input' => array(
+                array(
+                    'type' => 'text',
+                    'label' => $this->l('Product ID'),
+                    'name' => 'PRODUCT_ID',
+                    'size' => 20,
+                    'required' => true,
+                    'class' => 'form-control'
+                ),
+            ),
+            'submit' => array(
+                'title' => $this->l('Search'),
+                'class' => 'btn btn-primary pull-right'
             )
         );
 
@@ -111,39 +114,38 @@ class ProductBuyers extends Module
         return $helper->generateForm($fieldsForm);
     }
 
-public function displayProductBuyers($productId)
-{
-    if (!$productId) {
-        return $this->displayError($this->l('Invalid product ID'));
+    public function displayProductBuyers($productId)
+    {
+        if (!$productId) {
+            return $this->displayError($this->l('Invalid product ID'));
+        }
+
+        $sql = new DbQuery();
+        $sql->select('c.firstname, c.lastname, o.id_order');
+        $sql->from('orders', 'o');
+        $sql->leftJoin('order_detail', 'od', 'o.id_order = od.id_order');
+        $sql->leftJoin('customer', 'c', 'o.id_customer = c.id_customer');
+        $sql->where('od.product_id = ' . (int)$productId);
+        $results = Db::getInstance()->executeS($sql);
+
+        if (!$results) {
+            return $this->displayError($this->l('No buyers found for this product'));
+        }
+
+        $html = '<table class="table table-bordered">';
+        $html .= '<thead class="thead-light"><tr><th>' . $this->l('First Name') . '</th><th>' . $this->l('Last Name') . '</th><th>' . $this->l('Order ID') . '</th><th>' . $this->l('Order Link') . '</th></tr></thead>';
+        $html .= '<tbody>';
+        foreach ($results as $row) {
+            $orderLink = $this->context->link->getAdminLink('AdminOrders', true, [], [
+                'id_order' => (int)$row['id_order'],
+                'vieworder' => 1
+            ]);
+            $html .= '<tr><td>' . htmlspecialchars($row['firstname']) . '</td><td>' . htmlspecialchars($row['lastname']) . '</td><td>' . (int)$row['id_order'] . '</td><td><a href="' . $orderLink . '" class="btn btn-secondary" target="_blank">' . $this->l('View Order') . '</a></td></tr>';
+        }
+        $html .= '</tbody></table>';
+
+        return $html;
     }
-
-    $sql = new DbQuery();
-    $sql->select('c.firstname, c.lastname, o.id_order');
-    $sql->from('orders', 'o');
-    $sql->leftJoin('order_detail', 'od', 'o.id_order = od.id_order');
-    $sql->leftJoin('customer', 'c', 'o.id_customer = c.id_customer');
-    $sql->where('od.product_id = ' . (int)$productId);
-    $results = Db::getInstance()->executeS($sql);
-
-    if (!$results) {
-        return $this->displayError($this->l('No buyers found for this product'));
-    }
-
-    $html = '<table class="table">';
-    $html .= '<thead><tr><th>' . $this->l('First Name') . '</th><th>' . $this->l('Last Name') . '</th><th>' . $this->l('Order ID') . '</th><th>' . $this->l('Order Link') . '</th></tr></thead>';
-    $html .= '<tbody>';
-    foreach ($results as $row) {
-        $orderLink = $this->context->link->getAdminLink('AdminOrders', true, [], [
-            'id_order' => (int)$row['id_order'],
-            'vieworder' => 1
-        ]);
-        $html .= '<tr><td>' . htmlspecialchars($row['firstname']) . '</td><td>' . htmlspecialchars($row['lastname']) . '</td><td>' . (int)$row['id_order'] . '</td><td><a href="' . $orderLink . '" target="_blank">' . $this->l('View Order') . '</a></td></tr>';
-    }
-    $html .= '</tbody></table>';
-
-    return $html;
-}
-
 
     public function ajaxProcessProductSearch()
     {
