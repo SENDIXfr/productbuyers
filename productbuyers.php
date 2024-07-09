@@ -9,9 +9,11 @@ class ProductBuyers extends Module
     {
         $this->name = 'productbuyers';
         $this->tab = 'administration';
-        $this->version = '0.4.2';
+        $this->version = '0.5.2';
         $this->author = 'SENDIX';
+        $this->ps_versions_compliancy = array('min' => '1.7.0.0', 'max' => _PS_VERSION_);
         $this->need_instance = 0;
+        $this->icon = 'icon.png';
 
         parent::__construct();
 
@@ -26,117 +28,142 @@ class ProductBuyers extends Module
         return parent::install() && $this->registerHook('displayBackOfficeHeader');
     }
 
+    public function hookBackOfficeHeader()
+    {
+        $this->context->controller->addJS($this->_path . 'views/js/productbuyers.js');
+        Media::addJsDef(array(
+            'baseUri' => $this->context->link->getAdminLink('AdminModules', true) . '&configure=' . $this->name . '&ajax=1&action=ProductSearch&query='
+        ));
+    }
+
     public function getContent()
     {
         $output = '';
+
         if (Tools::isSubmit('submit_productbuyers')) {
             $productId = (int)Tools::getValue('PRODUCT_ID');
-            $output .= $this->displayBuyers($productId);
+            $output .= $this->displayProductBuyers($productId);
         }
 
         return $output . $this->displayForm();
     }
 
-public function displayForm()
-{
-    $defaultLang = (int)Configuration::get('PS_LANG_DEFAULT');
+    public function displayForm()
+    {
+        $defaultLang = (int)Configuration::get('PS_LANG_DEFAULT');
 
-    $fieldsForm[0]['form'] = array(
-        'legend' => array(
-            'title' => $this->l('Enter Product ID'),
-        ),
-        'input' => array(
-            array(
-                'type' => 'text',
-                'label' => $this->l('Product ID'),
-                'name' => 'PRODUCT_ID',
-                'size' => 20,
-                'required' => true
+        $fieldsForm[0]['form'] = array(
+            'legend' => array(
+                'title' => $this->l('Enter Product ID'),
             ),
-        ),
-        'submit' => array(
-            'title' => $this->l('Search'),
-            'class' => 'btn btn-default pull-right'
-        )
-    );
-
-    $fieldsForm[1]['form'] = array(
-        'legend' => array(
-            'title' => $this->l('Search Product by Name'),
-        ),
-        'input' => array(
-            array(
-                'type' => 'text',
-                'label' => $this->l('Product Name'),
-                'name' => 'PRODUCT_NAME',
-                'size' => 20,
-                'required' => true,
-                'id' => 'product_name'
+            'input' => array(
+                array(
+                    'type' => 'text',
+                    'label' => $this->l('Product ID'),
+                    'name' => 'PRODUCT_ID',
+                    'size' => 20,
+                    'required' => true
+                ),
             ),
-        ),
-        'buttons' => array(
-            array(
-                'type' => 'button',
+            'submit' => array(
                 'title' => $this->l('Search'),
-                'class' => 'btn btn-default pull-right',
-                'id' => 'search_product_button'
+                'class' => 'btn btn-default pull-right'
+            )
+        );
+
+        $fieldsForm[1]['form'] = array(
+            'legend' => array(
+                'title' => $this->l('Search Product by Name or Reference'),
             ),
-        )
-    );
+            'input' => array(
+                array(
+                    'type' => 'text',
+                    'label' => $this->l('Product Name or Reference'),
+                    'name' => 'PRODUCT_NAME',
+                    'size' => 20,
+                    'required' => true,
+                    'id' => 'product_name'
+                ),
+            ),
+            'buttons' => array(
+                array(
+                    'type' => 'button',
+                    'title' => $this->l('Search'),
+                    'class' => 'btn btn-default pull-right',
+                    'id' => 'search_product_button'
+                ),
+            )
+        );
 
-    $helper = new HelperForm();
+        $helper = new HelperForm();
 
-    $helper->show_toolbar = false;
-    $helper->table = $this->table;
-    $helper->module = $this;
-    $helper->default_form_language = $defaultLang;
-    $helper->allow_employee_form_lang = $defaultLang;
-    $helper->identifier = $this->identifier;
-    $helper->submit_action = 'submit_productbuyers';
-    $helper->currentIndex = $this->context->link->getAdminLink('AdminModules', false)
-        . '&configure=' . $this->name . '&tab_module=' . $this->tab . '&module_name=' . $this->name;
-    $helper->token = Tools::getAdminTokenLite('AdminModules');
+        $helper->show_toolbar = false;
+        $helper->table = $this->table;
+        $helper->module = $this;
+        $helper->default_form_language = $defaultLang;
+        $helper->allow_employee_form_lang = $defaultLang;
+        $helper->identifier = $this->identifier;
+        $helper->submit_action = 'submit_productbuyers';
+        $helper->currentIndex = $this->context->link->getAdminLink('AdminModules', false) . '&configure=' . $this->name . '&tab_module=' . $this->tab . '&module_name=' . $this->name;
+        $helper->token = Tools::getAdminTokenLite('AdminModules');
 
-    $this->context->controller->addJS($this->_path.'views/js/productbuyers.js');
-    $this->context->controller->addJS('var baseUri = "' . $this->context->link->getAdminLink('AdminModules', false) . '";');
+        return $helper->generateForm($fieldsForm);
+    }
 
-    return $helper->generateForm($fieldsForm);
+public function displayProductBuyers($productId)
+{
+    if (!$productId) {
+        return $this->displayError($this->l('Invalid product ID'));
+    }
+
+    $sql = new DbQuery();
+    $sql->select('c.firstname, c.lastname, o.id_order');
+    $sql->from('orders', 'o');
+    $sql->leftJoin('order_detail', 'od', 'o.id_order = od.id_order');
+    $sql->leftJoin('customer', 'c', 'o.id_customer = c.id_customer');
+    $sql->where('od.product_id = ' . (int)$productId);
+    $results = Db::getInstance()->executeS($sql);
+
+    if (!$results) {
+        return $this->displayError($this->l('No buyers found for this product'));
+    }
+
+    $html = '<table class="table">';
+    $html .= '<thead><tr><th>' . $this->l('First Name') . '</th><th>' . $this->l('Last Name') . '</th><th>' . $this->l('Order ID') . '</th><th>' . $this->l('Order Link') . '</th></tr></thead>';
+    $html .= '<tbody>';
+    foreach ($results as $row) {
+        $orderLink = $this->context->link->getAdminLink('AdminOrders', true, [], [
+            'id_order' => (int)$row['id_order'],
+            'vieworder' => 1
+        ]);
+        $html .= '<tr><td>' . htmlspecialchars($row['firstname']) . '</td><td>' . htmlspecialchars($row['lastname']) . '</td><td>' . (int)$row['id_order'] . '</td><td><a href="' . $orderLink . '" target="_blank">' . $this->l('View Order') . '</a></td></tr>';
+    }
+    $html .= '</tbody></table>';
+
+    return $html;
 }
 
-    public function displayBuyers($productId)
+
+    public function ajaxProcessProductSearch()
     {
-        if ($productId <= 0) {
-            return $this->displayError($this->l('Invalid Product ID.'));
+        $query = Tools::getValue('query');
+
+        if (!$query) {
+            die(json_encode(['error' => 'Query is empty']));
         }
 
-        $sql = new DbQuery();
-        $sql->select('c.id_customer, c.firstname, c.lastname, c.email, o.id_order');
-        $sql->from('orders', 'o');
-        $sql->innerJoin('order_detail', 'od', 'o.id_order = od.id_order');
-        $sql->innerJoin('customer', 'c', 'o.id_customer = c.id_customer');
-        $sql->where('od.product_id = ' . (int)$productId);
-        
-        $customers = Db::getInstance()->executeS($sql);
+        $sql = 'SELECT p.id_product, pl.name
+                FROM ' . _DB_PREFIX_ . 'product p
+                LEFT JOIN ' . _DB_PREFIX_ . 'product_lang pl ON (p.id_product = pl.id_product)
+                WHERE (pl.name LIKE \'%' . pSQL($query) . '%\' OR p.reference LIKE \'%' . pSQL($query) . '%\')
+                AND pl.id_lang = ' . (int)$this->context->language->id;
 
-        if (!$customers) {
-            return $this->displayError($this->l('No customers found for this product.'));
+        $results = Db::getInstance()->executeS($sql);
+
+        if (empty($results)) {
+            die(json_encode(['error' => 'No products found']));
         }
 
-        $output = '<table class="table">';
-        $output .= '<thead><tr><th>' . $this->l('Customer ID') . '</th><th>' . $this->l('First Name') . '</th><th>' . $this->l('Last Name') . '</th><th>' . $this->l('Email') . '</th><th>' . $this->l('Order ID') . '</th></tr></thead>';
-        $output .= '<tbody>';
-        foreach ($customers as $customer) {
-            $output .= '<tr>';
-            $output .= '<td>' . (int)$customer['id_customer'] . '</td>';
-            $output .= '<td>' . htmlspecialchars($customer['firstname']) . '</td>';
-            $output .= '<td>' . htmlspecialchars($customer['lastname']) . '</td>';
-            $output .= '<td>' . htmlspecialchars($customer['email']) . '</td>';
-            $output .= '<td>' . (int)$customer['id_order'] . '</td>';
-            $output .= '</tr>';
-        }
-        $output .= '</tbody>';
-        $output .= '</table>';
-
-        return $output;
+        die(json_encode($results));
     }
 }

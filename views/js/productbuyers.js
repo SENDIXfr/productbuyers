@@ -4,12 +4,12 @@ document.addEventListener('DOMContentLoaded', function () {
         searchButton.addEventListener('click', function () {
             var query = document.getElementById('product_name').value;
             if (!query) {
-                alert('Please enter a product name');
+                alert('Please enter a product name or reference');
                 return;
             }
 
             var xhr = new XMLHttpRequest();
-            xhr.open('GET', baseUri + '?fc=module&module=productbuyers&controller=ajaxProductSearch&query=' + encodeURIComponent(query), true);
+            xhr.open('GET', baseUri + encodeURIComponent(query), true);
             xhr.onreadystatechange = function () {
                 if (xhr.readyState === 4 && xhr.status === 200) {
                     var response = JSON.parse(xhr.responseText);
