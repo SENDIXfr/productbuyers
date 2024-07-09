@@ -13,7 +13,8 @@ class ProductBuyers extends Module
         $this->author = 'SENDIX';
         $this->ps_versions_compliancy = array('min' => '1.7.0.0', 'max' => _PS_VERSION_);
         $this->need_instance = 0;
-        $this->icon = 'icon.png';
+        $this->icon = 'logo.png';
+        $this->bootstrap = true;
 
         parent::__construct();
 
