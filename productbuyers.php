@@ -9,7 +9,7 @@ class ProductBuyers extends Module
     {
         $this->name = 'productbuyers';
         $this->tab = 'administration';
-        $this->version = '0.8.2';
+        $this->version = '0.8.8';
         $this->author = 'SENDIX';
         $this->ps_versions_compliancy = array('min' => '1.7.0.0', 'max' => _PS_VERSION_);
         $this->need_instance = 0;
@@ -32,6 +32,9 @@ public function hookBackOfficeHeader()
 {
     $this->context->controller->addJS(
         $this->_path . "views/js/productbuyers.js"
+    );
+    $this->context->controller->addCSS(
+        $this->_path . "views/css/productbuyers.css"
     );
     Media::addJsDef([
         "baseUri" => $this->context->link->getAdminLink("AdminModules", true) . "&configure=" . $this->name . "&ajax=1&action=ProductSearch&query=",
@@ -147,7 +150,10 @@ public function displayProductBuyers($productId)
             die(json_encode(['error' => 'Query is empty']));
         }
 
-        $sql = 'SELECT p.id_product, pl.name
+        $sql = 'SELECT p.id_product, pl.name, 
+                    (SELECT COUNT(*) FROM ' . _DB_PREFIX_ . 'order_detail od 
+                        LEFT JOIN ' . _DB_PREFIX_ . 'orders o ON o.id_order = od.id_order 
+                        WHERE od.product_id = p.id_product) AS purchase_count
                 FROM ' . _DB_PREFIX_ . 'product p
                 LEFT JOIN ' . _DB_PREFIX_ . 'product_lang pl ON (p.id_product = pl.id_product)
                 WHERE (pl.name LIKE \'%' . pSQL($query) . '%\' OR p.reference LIKE \'%' . pSQL($query) . '%\')

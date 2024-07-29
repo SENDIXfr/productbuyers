@@ -1,0 +1,23 @@
+/* Styles pour le tableau de recherche */
+.table thead th {
+    cursor: pointer;
+    position: relative;
+}
+
+.table thead th .sort-icon {
+    margin-left: 5px;
+}
+
+.table thead th.asc .sort-icon::after {
+    content: '▲'; /* Flèche ascendante */
+    position: absolute;
+    right: 10px;
+}
+
+.table thead th.desc .sort-icon::after {
+    content: '▼'; /* Flèche descendante */
+    position: absolute;
+    right: 10px;
+}
+
+/* Autres styles si nécessaire */

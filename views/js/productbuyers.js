@@ -26,42 +26,88 @@ document.addEventListener('DOMContentLoaded', function () {
 
     if (searchButton) {
         searchButton.addEventListener('click', function (e) {
-            e.preventDefault();  // Empêcher la soumission de formulaire par défaut
+            e.preventDefault();  
             searchProducts();
         });
     }
 
     productNameInput.addEventListener('keypress', function (e) {
         if (e.key === 'Enter') {
-            e.preventDefault();  // Empêcher la soumission de formulaire par défaut
+            e.preventDefault(); 
             searchProducts();
         }
     });
 
-    function displaySearchResults(products) {
-        resultsContainer.innerHTML = '<table class="table table-bordered"><thead class="thead-light"><tr><th>Product Name</th><th>Select</th></tr></thead><tbody></tbody></table>';
-        const tbody = resultsContainer.querySelector('tbody');
-        products.forEach(product => {
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${product.name}</td>
-                <td><button class="btn btn-primary select_product" data-id="${product.id_product}">Select</button></td>
-            `;
-            tbody.appendChild(row);
-        });
+function displaySearchResults(products) {
+    resultsContainer.innerHTML = `
+        <table class="table table-bordered">
+            <thead class="thead-light">
+                <tr>
+                    <th data-sort="name">Product Name <span class="sort-icon"></span></th>
+                    <th data-sort="purchase_count">Number of Purchases <span class="sort-icon"></span></th>
+                    <th>Select</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    `;
 
-        document.querySelectorAll('.select_product').forEach(button => {
-            button.addEventListener('click', function (e) {
-                e.preventDefault();  // Empêcher toute action par défaut
-                const productId = this.getAttribute('data-id');
-                fetchProductBuyers(productId);
+    const tbody = resultsContainer.querySelector('tbody');
+    renderTableRows(products, tbody);
+
+    const headers = resultsContainer.querySelectorAll('th[data-sort]');
+    headers.forEach(header => {
+        header.addEventListener('click', () => {
+            const sortKey = header.getAttribute('data-sort');
+            
+            const isAsc = header.classList.contains('asc');
+            headers.forEach(h => {
+                h.classList.remove('asc', 'desc');
             });
+            
+            if (isAsc) {
+                header.classList.add('desc');
+            } else {
+                header.classList.add('asc');
+            }
+            
+            sortProducts(products, sortKey, !isAsc);
+            renderTableRows(products, tbody);
         });
-    }
+    });
+}
 
+
+function renderTableRows(products, tbody) {
+    tbody.innerHTML = '';
+    products.forEach(product => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${product.name}</td>
+            <td>${product.purchase_count}</td>
+            <td><button class="btn btn-primary select_product" data-id="${product.id_product}">Select</button></td>
+        `;
+        tbody.appendChild(row);
+    });
+
+    document.querySelectorAll('.select_product').forEach(button => {
+        button.addEventListener('click', function (e) {
+            e.preventDefault();
+            const productId = this.getAttribute('data-id');
+            fetchProductBuyers(productId);
+        });
+    });
+}
+
+function sortProducts(products, key, isAsc) {
+    products.sort((a, b) => {
+        if (a[key] < b[key]) return isAsc ? -1 : 1;
+        if (a[key] > b[key]) return isAsc ? 1 : -1;
+        return 0;
+    });
+}
     function fetchProductBuyers(productId) {
         const buyersUri = `${baseUri.replace('ProductSearch&query=', 'ProductBuyers&id_product=')}${productId}`;
-        console.log('Fetching buyers from:', buyersUri);  // Ajoutez ceci pour déboguer l'URL
         fetch(buyersUri)
             .then(response => {
                 if (!response.ok) {
