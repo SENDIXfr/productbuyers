@@ -1,196 +1,437 @@
 <?php
+/**
+ * Copyright since 2007 PrestaShop SA and Contributors
+ * PrestaShop is an International Registered Trademark & Property of PrestaShop SA
+ *
+ * NOTICE OF LICENSE
+ *
+ * This source file is subject to the Academic Free License version 3.0
+ * that is bundled with this package in the file LICENSE.md.
+ * It is also available through the world-wide-web at this URL:
+ * https://opensource.org/licenses/AFL-3.0
+ *
+ * @author    SENDIX
+ * @copyright Since 2024 SENDIX
+ * @license   https://opensource.org/licenses/AFL-3.0 Academic Free License version 3.0
+ */
+
 if (!defined('_PS_VERSION_')) {
     exit;
 }
 
 class ProductBuyers extends Module
 {
+    private const MAX_SEARCH_RESULTS = 50;
+    private const MAX_BUYER_RESULTS = 500;
+
+    /** @var bool */
+    private $assetsRegistered = false;
+
     public function __construct()
     {
         $this->name = 'productbuyers';
         $this->tab = 'administration';
-        $this->version = '0.8.8';
+        $this->version = '1.0.0';
         $this->author = 'SENDIX';
-        $this->ps_versions_compliancy = array('min' => '1.7.0.0', 'max' => _PS_VERSION_);
+        $this->ps_versions_compliancy = [
+            'min' => '8.0.0',
+            'max' => '9.1.99',
+        ];
         $this->need_instance = 0;
         $this->bootstrap = true;
 
         parent::__construct();
 
-        $this->displayName = $this->l('Product Buyers');
-        $this->description = $this->l('Displays a list of customers who bought a specific product.');
-
-        $this->confirmUninstall = $this->l('Are you sure you want to uninstall?');
+        $this->displayName = $this->trans('Product buyers', [], 'Modules.Productbuyers.Admin');
+        $this->description = $this->trans(
+            'Displays the customers who bought a specific product.',
+            [],
+            'Modules.Productbuyers.Admin'
+        );
+        $this->confirmUninstall = $this->trans(
+            'Are you sure you want to uninstall this module?',
+            [],
+            'Modules.Productbuyers.Admin'
+        );
     }
 
     public function install()
     {
-        return parent::install() && $this->registerHook('displayBackOfficeHeader');
+        return parent::install()
+            && $this->registerHook('displayBackOfficeHeader');
     }
-    
-public function hookBackOfficeHeader()
-{
-    $this->context->controller->addJS(
-        $this->_path . "views/js/productbuyers.js"
-    );
-    $this->context->controller->addCSS(
-        $this->_path . "views/css/productbuyers.css"
-    );
-    Media::addJsDef([
-        "baseUri" => $this->context->link->getAdminLink("AdminModules", true) . "&configure=" . $this->name . "&ajax=1&action=ProductSearch&query=",
-        "orderBaseUri" => $this->context->link->getAdminLink('AdminOrders', true) . '/',
-        "orderLinknew" => $this->context->link->getAdminLink("AdminOrders",true, [], ["id_order" => (int) $row["id_order"], "vieworder" => 1])
-    ]);
-}
 
+    /**
+     * Loads the assets only on this module configuration page.
+     *
+     * @param array<string, mixed> $params
+     */
+    public function hookDisplayBackOfficeHeader(array $params = [])
+    {
+        $configuredModule = (string) Tools::getValue('configure');
+        $moduleName = (string) Tools::getValue('module_name');
+
+        if ($configuredModule !== $this->name && $moduleName !== $this->name) {
+            return;
+        }
+
+        $this->registerBackOfficeAssets();
+    }
+
+    private function registerBackOfficeAssets()
+    {
+        if ($this->assetsRegistered) {
+            return;
+        }
+
+        $this->assetsRegistered = true;
+        $this->context->controller->addJS($this->_path . 'views/js/productbuyers.js');
+        $this->context->controller->addCSS($this->_path . 'views/css/productbuyers.css');
+
+        Media::addJsDef([
+            'productBuyersConfig' => [
+                'ajaxUrl' => $this->context->link->getAdminLink(
+                    'AdminModules',
+                    true,
+                    [],
+                    [
+                        'configure' => $this->name,
+                        'ajax' => 1,
+                    ]
+                ),
+                'translations' => [
+                    'searching' => $this->trans('Searching…', [], 'Modules.Productbuyers.Admin'),
+                    'loadingBuyers' => $this->trans('Loading buyers…', [], 'Modules.Productbuyers.Admin'),
+                    'requestError' => $this->trans(
+                        'The request could not be completed. Please try again.',
+                        [],
+                        'Modules.Productbuyers.Admin'
+                    ),
+                    'emptyQuery' => $this->trans(
+                        'Enter a product name or reference.',
+                        [],
+                        'Modules.Productbuyers.Admin'
+                    ),
+                    'noProducts' => $this->trans('No products found.', [], 'Modules.Productbuyers.Admin'),
+                    'noBuyers' => $this->trans(
+                        'No validated order contains this product.',
+                        [],
+                        'Modules.Productbuyers.Admin'
+                    ),
+                    'productName' => $this->trans('Product name', [], 'Modules.Productbuyers.Admin'),
+                    'reference' => $this->trans('Reference', [], 'Modules.Productbuyers.Admin'),
+                    'purchaseCount' => $this->trans(
+                        'Validated orders',
+                        [],
+                        'Modules.Productbuyers.Admin'
+                    ),
+                    'select' => $this->trans('View buyers', [], 'Modules.Productbuyers.Admin'),
+                    'firstName' => $this->trans('First name', [], 'Modules.Productbuyers.Admin'),
+                    'lastName' => $this->trans('Last name', [], 'Modules.Productbuyers.Admin'),
+                    'orderReference' => $this->trans('Order', [], 'Modules.Productbuyers.Admin'),
+                    'orderDate' => $this->trans('Order date', [], 'Modules.Productbuyers.Admin'),
+                    'viewOrder' => $this->trans('View order', [], 'Modules.Productbuyers.Admin'),
+                    'searchLimit' => $this->trans(
+                        'Only the first 50 matching products are shown. Refine your search if needed.',
+                        [],
+                        'Modules.Productbuyers.Admin'
+                    ),
+                    'buyerLimit' => $this->trans(
+                        'Only the 500 most recent orders are shown.',
+                        [],
+                        'Modules.Productbuyers.Admin'
+                    ),
+                ],
+            ],
+        ]);
+    }
 
     public function getContent()
     {
-        $output = '';
+        if ((bool) Tools::getValue('ajax')) {
+            $action = (string) Tools::getValue('action');
 
-        if (Tools::isSubmit('submit_productbuyers')) {
-            $productId = (int)Tools::getValue('PRODUCT_ID');
-            $output .= $this->displayProductBuyers($productId);
+            if ($action === 'ProductSearch') {
+                $this->ajaxProcessProductSearch();
+            }
+
+            if ($action === 'ProductBuyers') {
+                $this->ajaxProcessProductBuyers();
+            }
+
+            $this->sendJsonResponse(
+                [
+                    'success' => false,
+                    'error' => $this->trans('Unknown action.', [], 'Modules.Productbuyers.Admin'),
+                ],
+                400
+            );
         }
 
-        return $output . $this->displayForm();
+        $this->registerBackOfficeAssets();
+
+        return $this->renderForm()
+            . $this->display(__FILE__, 'views/templates/admin/configure.tpl');
     }
 
-    public function displayForm()
+    private function renderForm()
     {
-        $defaultLang = (int)Configuration::get('PS_LANG_DEFAULT');
+        $defaultLanguageId = (int) Configuration::get('PS_LANG_DEFAULT');
 
-        $fieldsForm = array();
-
-        $fieldsForm[0]['form'] = array(
-            'legend' => array(
-                'title' => $this->l('Search Product by Name or Reference'),
-            ),
-            'input' => array(
-                array(
-                    'type' => 'text',
-                    'label' => $this->l('Product Name or Reference'),
-                    'name' => 'PRODUCT_NAME',
-                    'size' => 20,
-                    'required' => true,
-                    'id' => 'product_name'
+        $fieldsForm = [
+            'form' => [
+                'legend' => [
+                    'title' => $this->trans(
+                        'Search for a product',
+                        [],
+                        'Modules.Productbuyers.Admin'
+                    ),
+                    'icon' => 'icon-search',
+                ],
+                'description' => $this->trans(
+                    'Buyers are taken from validated orders in the current shop.',
+                    [],
+                    'Modules.Productbuyers.Admin'
                 ),
-            ),
-            'buttons' => array(
-                array(
-                    'type' => 'button',
-                    'title' => $this->l('Search'),
-                    'class' => 'btn btn-default pull-right',
-                    'id' => 'search_product_button'
-                ),
-            )
-        );
+                'input' => [
+                    [
+                        'type' => 'text',
+                        'label' => $this->trans(
+                            'Product name or reference',
+                            [],
+                            'Modules.Productbuyers.Admin'
+                        ),
+                        'name' => 'PRODUCT_NAME',
+                        'required' => true,
+                        'id' => 'product_name',
+                        'class' => 'fixed-width-xxl',
+                    ],
+                ],
+                'buttons' => [
+                    [
+                        'type' => 'button',
+                        'title' => $this->trans('Search', [], 'Modules.Productbuyers.Admin'),
+                        'icon' => 'process-icon-search',
+                        'class' => 'btn btn-primary pull-right',
+                        'id' => 'search_product_button',
+                    ],
+                ],
+            ],
+        ];
 
         $helper = new HelperForm();
-
         $helper->show_toolbar = false;
-        $helper->table = $this->table;
+        $helper->table = $this->name;
         $helper->module = $this;
-        $helper->default_form_language = $defaultLang;
-        $helper->allow_employee_form_lang = $defaultLang;
-        $helper->identifier = $this->identifier;
+        $helper->default_form_language = $defaultLanguageId;
+        $helper->allow_employee_form_lang = $defaultLanguageId;
+        $helper->identifier = 'id_product';
         $helper->submit_action = 'submit_productbuyers';
-        $helper->currentIndex = $this->context->link->getAdminLink('AdminModules', false) . '&configure=' . $this->name . '&tab_module=' . $this->tab . '&module_name=' . $this->name;
+        $helper->currentIndex = $this->context->link->getAdminLink(
+            'AdminModules',
+            false,
+            [],
+            [
+                'configure' => $this->name,
+                'tab_module' => $this->tab,
+                'module_name' => $this->name,
+            ]
+        );
         $helper->token = Tools::getAdminTokenLite('AdminModules');
+        $helper->fields_value = [
+            'PRODUCT_NAME' => '',
+        ];
 
-        return $helper->generateForm($fieldsForm);
+        return $helper->generateForm([$fieldsForm]);
     }
-
-public function displayProductBuyers($productId)
-{
-    if (!$productId) {
-        return $this->displayError($this->l("Invalid product ID"));
-    }
-
-    // Récupération des données d'achat pour le produit
-    $sql = new DbQuery();
-    $sql->select("c.firstname, c.lastname, o.id_order");
-    $sql->from("orders", "o");
-    $sql->leftJoin("order_detail", "od", "o.id_order = od.id_order");
-    $sql->leftJoin("customer", "c", "o.id_customer = c.id_customer");
-    $sql->where("od.product_id = " . (int)$productId);
-    $results = Db::getInstance()->executeS($sql);
-
-    if (!$results) {
-        return $this->displayError($this->l("No buyers found for this product"));
-    }
-
-    // Préparation du tableau HTML pour afficher les résultats
-    $html = '<table class="table table-bordered">';
-    $html .= '<thead class="thead-light"><tr><th>' . $this->l("First Name") . '</th><th>' . $this->l("Last Name") . '</th><th>' . $this->l("Order ID") . '</th><th>' . $this->l("Order Link") . '</th></tr></thead>';
-    $html .= '<tbody>';
-
-    foreach ($results as $row) {
-        // Génération du lien de commande avec le bon format
-        $orderLink = $this->context->link->getBaseLink() . 'index.php/sell/orders/' . (int)$row["id_order"] . '/view?_token=' . Tools::getAdminTokenLite('AdminOrders');
-        $html .= '<tr>';
-        $html .= '<td>' . htmlspecialchars($row["firstname"]) . '</td>';
-        $html .= '<td>' . htmlspecialchars($row["lastname"]) . '</td>';
-        $html .= '<td>' . (int)$row["id_order"] . '</td>';
-        $html .= '<td><a href="' . $orderLink . '" class="btn btn-secondary" target="_blank">' . $this->l("View Order") . '</a></td>';
-        $html .= '</tr>';
-    }
-
-    $html .= '</tbody></table>';
-
-    return $html;
-}
-
 
     public function ajaxProcessProductSearch()
     {
-        $query = Tools::getValue('query');
+        $query = trim((string) Tools::getValue('query'));
 
-        if (!$query) {
-            die(json_encode(['error' => 'Query is empty']));
+        if ($query === '') {
+            $this->sendJsonResponse(
+                [
+                    'success' => false,
+                    'error' => $this->trans(
+                        'Enter a product name or reference.',
+                        [],
+                        'Modules.Productbuyers.Admin'
+                    ),
+                ],
+                400
+            );
         }
 
-        $sql = 'SELECT p.id_product, pl.name, 
-                    (SELECT COUNT(*) FROM ' . _DB_PREFIX_ . 'order_detail od 
-                        LEFT JOIN ' . _DB_PREFIX_ . 'orders o ON o.id_order = od.id_order 
-                        WHERE od.product_id = p.id_product) AS purchase_count
-                FROM ' . _DB_PREFIX_ . 'product p
-                LEFT JOIN ' . _DB_PREFIX_ . 'product_lang pl ON (p.id_product = pl.id_product)
-                WHERE (pl.name LIKE \'%' . pSQL($query) . '%\' OR p.reference LIKE \'%' . pSQL($query) . '%\')
-                AND pl.id_lang = ' . (int)$this->context->language->id;
+        $query = Tools::substr($query, 0, 100);
+        $escapedQuery = pSQL($query);
+        $shopId = (int) $this->context->shop->id;
+        $languageId = (int) $this->context->language->id;
+        $resultLimit = self::MAX_SEARCH_RESULTS + 1;
+
+        $sql = '
+            SELECT
+                p.id_product,
+                pl.name,
+                p.reference,
+                COUNT(DISTINCT IF(o.valid = 1, od.id_order, NULL)) AS purchase_count
+            FROM `' . _DB_PREFIX_ . 'product` p
+            INNER JOIN `' . _DB_PREFIX_ . 'product_shop` ps
+                ON ps.id_product = p.id_product
+                AND ps.id_shop = ' . $shopId . '
+            INNER JOIN `' . _DB_PREFIX_ . 'product_lang` pl
+                ON pl.id_product = p.id_product
+                AND pl.id_shop = ' . $shopId . '
+                AND pl.id_lang = ' . $languageId . '
+            LEFT JOIN `' . _DB_PREFIX_ . 'order_detail` od
+                ON od.product_id = p.id_product
+            LEFT JOIN `' . _DB_PREFIX_ . 'orders` o
+                ON o.id_order = od.id_order
+                AND o.id_shop = ' . $shopId . '
+            WHERE pl.name LIKE \'%' . $escapedQuery . '%\'
+                OR p.reference LIKE \'%' . $escapedQuery . '%\'
+            GROUP BY p.id_product, pl.name, p.reference
+            ORDER BY pl.name ASC
+            LIMIT ' . $resultLimit;
 
         $results = Db::getInstance()->executeS($sql);
 
-        if (empty($results)) {
-            die(json_encode(['error' => 'No products found']));
+        if ($results === false) {
+            $this->sendJsonResponse(
+                [
+                    'success' => false,
+                    'error' => $this->trans(
+                        'The product search failed.',
+                        [],
+                        'Modules.Productbuyers.Admin'
+                    ),
+                ],
+                500
+            );
         }
 
-        die(json_encode($results));
+        $truncated = count($results) > self::MAX_SEARCH_RESULTS;
+        $results = array_slice($results, 0, self::MAX_SEARCH_RESULTS);
+
+        foreach ($results as &$result) {
+            $result['id_product'] = (int) $result['id_product'];
+            $result['name'] = (string) $result['name'];
+            $result['reference'] = (string) $result['reference'];
+            $result['purchase_count'] = (int) $result['purchase_count'];
+        }
+        unset($result);
+
+        $this->sendJsonResponse([
+            'success' => true,
+            'data' => $results,
+            'meta' => [
+                'truncated' => $truncated,
+            ],
+        ]);
     }
 
     public function ajaxProcessProductBuyers()
     {
-        $productId = (int)Tools::getValue('id_product');
+        $productId = (int) Tools::getValue('id_product');
 
-        if (!$productId) {
-            echo json_encode(['error' => $this->l('Invalid product ID')]);
-            exit;
+        if ($productId <= 0) {
+            $this->sendJsonResponse(
+                [
+                    'success' => false,
+                    'error' => $this->trans('Invalid product ID.', [], 'Modules.Productbuyers.Admin'),
+                ],
+                400
+            );
         }
 
-        $sql = new DbQuery();
-        $sql->select('c.firstname, c.lastname, o.id_order');
-        $sql->from('orders', 'o');
-        $sql->leftJoin('order_detail', 'od', 'o.id_order = od.id_order');
-        $sql->leftJoin('customer', 'c', 'o.id_customer = c.id_customer');
-        $sql->where('od.product_id = ' . (int)$productId);
+        $shopId = (int) $this->context->shop->id;
+        $resultLimit = self::MAX_BUYER_RESULTS + 1;
+
+        $sql = '
+            SELECT DISTINCT
+                c.firstname,
+                c.lastname,
+                o.id_order,
+                o.reference AS order_reference,
+                o.date_add
+            FROM `' . _DB_PREFIX_ . 'order_detail` od
+            INNER JOIN `' . _DB_PREFIX_ . 'orders` o
+                ON o.id_order = od.id_order
+                AND o.id_shop = ' . $shopId . '
+                AND o.valid = 1
+            INNER JOIN `' . _DB_PREFIX_ . 'customer` c
+                ON c.id_customer = o.id_customer
+            WHERE od.product_id = ' . $productId . '
+            ORDER BY o.date_add DESC
+            LIMIT ' . $resultLimit;
+
         $results = Db::getInstance()->executeS($sql);
 
-        if (!$results) {
-            echo json_encode(['error' => $this->l('No buyers found for this product')]);
-            exit;
+        if ($results === false) {
+            $this->sendJsonResponse(
+                [
+                    'success' => false,
+                    'error' => $this->trans(
+                        'The buyer search failed.',
+                        [],
+                        'Modules.Productbuyers.Admin'
+                    ),
+                ],
+                500
+            );
         }
 
-        echo json_encode($results);
-        exit;
+        $truncated = count($results) > self::MAX_BUYER_RESULTS;
+        $results = array_slice($results, 0, self::MAX_BUYER_RESULTS);
+
+        foreach ($results as &$result) {
+            $result['id_order'] = (int) $result['id_order'];
+            $result['firstname'] = (string) $result['firstname'];
+            $result['lastname'] = (string) $result['lastname'];
+            $result['order_reference'] = (string) $result['order_reference'];
+            $result['date_add'] = (string) $result['date_add'];
+            $result['order_url'] = $this->context->link->getAdminLink(
+                'AdminOrders',
+                true,
+                [],
+                [
+                    'id_order' => $result['id_order'],
+                    'vieworder' => 1,
+                ]
+            );
+        }
+        unset($result);
+
+        $this->sendJsonResponse([
+            'success' => true,
+            'data' => $results,
+            'meta' => [
+                'truncated' => $truncated,
+            ],
+        ]);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function sendJsonResponse(array $payload, $statusCode = 200)
+    {
+        if (!headers_sent()) {
+            http_response_code((int) $statusCode);
+            header('Content-Type: application/json; charset=utf-8');
+            header('Cache-Control: no-store');
+        }
+
+        $json = json_encode(
+            $payload,
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE
+        );
+
+        if ($json === false) {
+            http_response_code(500);
+            $json = '{"success":false,"error":"JSON encoding failed."}';
+        }
+
+        exit($json);
     }
 }

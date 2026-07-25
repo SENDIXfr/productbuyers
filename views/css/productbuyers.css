@@ -1,23 +1,55 @@
-/* Styles pour le tableau de recherche */
-.table thead th {
-    cursor: pointer;
-    position: relative;
+.productbuyers-results {
+  clear: both;
+  margin-top: 1.5rem;
 }
 
-.table thead th .sort-icon {
-    margin-left: 5px;
+.productbuyers-results[aria-busy='true'] {
+  opacity: 0.75;
 }
 
-.table thead th.asc .sort-icon::after {
-    content: '▲'; /* Flèche ascendante */
-    position: absolute;
-    right: 10px;
+.productbuyers-table {
+  margin-bottom: 0;
 }
 
-.table thead th.desc .sort-icon::after {
-    content: '▼'; /* Flèche descendante */
-    position: absolute;
-    right: 10px;
+.productbuyers-table th,
+.productbuyers-table td {
+  vertical-align: middle;
 }
 
-/* Autres styles si nécessaire */
+.productbuyers-sort {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-weight: 600;
+  gap: 0.35rem;
+  padding: 0;
+  text-align: left;
+}
+
+.productbuyers-sort:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.productbuyers-sort-icon {
+  display: inline-block;
+  min-width: 1em;
+}
+
+.productbuyers-limit-warning {
+  margin-top: 1rem;
+}
+
+@media (max-width: 767px) {
+  .productbuyers-results {
+    overflow-x: auto;
+  }
+
+  .productbuyers-table {
+    min-width: 720px;
+  }
+}

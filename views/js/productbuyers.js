@@ -1,173 +1,309 @@
-document.addEventListener('DOMContentLoaded', function () {
-    const searchButton = document.getElementById('search_product_button');
-    const productNameInput = document.getElementById('product_name');
-    const resultsContainer = document.createElement('div');
-    resultsContainer.setAttribute('id', 'search_results');
-    searchButton.parentNode.appendChild(resultsContainer);
+/**
+ * Product Buyers back-office interactions.
+ *
+ * Data returned by the server is always inserted with textContent. This keeps
+ * product and customer data from being interpreted as HTML.
+ */
+document.addEventListener('DOMContentLoaded', () => {
+  'use strict';
 
-    function searchProducts() {
-        const query = productNameInput.value;
-        if (query) {
-            fetch(baseUri + encodeURIComponent(query))
-                .then(response => response.json())
-                .then(data => {
-                    if (data.error) {
-                        resultsContainer.innerHTML = `<p>${data.error}</p>`;
-                    } else {
-                        displaySearchResults(data);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    resultsContainer.innerHTML = '<p>An error occurred while searching for products.</p>';
-                });
-        }
+  const config = window.productBuyersConfig;
+  const searchButton = document.getElementById('search_product_button');
+  const productInput = document.getElementById('product_name');
+  const resultsContainer = document.getElementById('productbuyers_results');
+
+  if (!config || !searchButton || !productInput || !resultsContainer) {
+    return;
+  }
+
+  const translations = config.translations || {};
+  let activeRequest = null;
+
+  const createElement = (tagName, options = {}) => {
+    const element = document.createElement(tagName);
+
+    if (options.className) {
+      element.className = options.className;
     }
 
-    if (searchButton) {
-        searchButton.addEventListener('click', function (e) {
-            e.preventDefault();  
-            searchProducts();
-        });
+    if (options.text !== undefined) {
+      element.textContent = String(options.text);
     }
 
-    productNameInput.addEventListener('keypress', function (e) {
-        if (e.key === 'Enter') {
-            e.preventDefault(); 
-            searchProducts();
-        }
+    return element;
+  };
+
+  const renderMessage = (message, level = 'info') => {
+    resultsContainer.replaceChildren(
+      createElement('div', {
+        className: `alert alert-${level}`,
+        text: message,
+      }),
+    );
+  };
+
+  const createApiUrl = (action, parameters = {}) => {
+    const url = new URL(config.ajaxUrl, window.location.href);
+    url.searchParams.set('ajax', '1');
+    url.searchParams.set('action', action);
+
+    Object.entries(parameters).forEach(([key, value]) => {
+      url.searchParams.set(key, String(value));
     });
 
-function displaySearchResults(products) {
-    resultsContainer.innerHTML = `
-        <table class="table table-bordered">
-            <thead class="thead-light">
-                <tr>
-                    <th data-sort="name">Product Name <span class="sort-icon"></span></th>
-                    <th data-sort="purchase_count">Number of Purchases <span class="sort-icon"></span></th>
-                    <th>Select</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        </table>
-    `;
+    return url.toString();
+  };
 
-    const tbody = resultsContainer.querySelector('tbody');
-    renderTableRows(products, tbody);
-
-    const headers = resultsContainer.querySelectorAll('th[data-sort]');
-    headers.forEach(header => {
-        header.addEventListener('click', () => {
-            const sortKey = header.getAttribute('data-sort');
-            
-            const isAsc = header.classList.contains('asc');
-            headers.forEach(h => {
-                h.classList.remove('asc', 'desc');
-            });
-            
-            if (isAsc) {
-                header.classList.add('desc');
-            } else {
-                header.classList.add('asc');
-            }
-            
-            sortProducts(products, sortKey, !isAsc);
-            renderTableRows(products, tbody);
-        });
-    });
-}
-
-
-function renderTableRows(products, tbody) {
-    tbody.innerHTML = '';
-    products.forEach(product => {
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td>${product.name}</td>
-            <td>${product.purchase_count}</td>
-            <td><button class="btn btn-primary select_product" data-id="${product.id_product}">Select</button></td>
-        `;
-        tbody.appendChild(row);
-    });
-
-    document.querySelectorAll('.select_product').forEach(button => {
-        button.addEventListener('click', function (e) {
-            e.preventDefault();
-            const productId = this.getAttribute('data-id');
-            fetchProductBuyers(productId);
-        });
-    });
-}
-
-function sortProducts(products, key, isAsc) {
-    products.sort((a, b) => {
-        if (a[key] < b[key]) return isAsc ? -1 : 1;
-        if (a[key] > b[key]) return isAsc ? 1 : -1;
-        return 0;
-    });
-}
-    function fetchProductBuyers(productId) {
-        const buyersUri = `${baseUri.replace('ProductSearch&query=', 'ProductBuyers&id_product=')}${productId}`;
-        fetch(buyersUri)
-            .then(response => {
-                if (!response.ok) {
-                    return response.text().then(text => {
-                        console.error('Server Error:', text);
-                        throw new Error('Network response was not ok');
-                    });
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.error) {
-                    resultsContainer.innerHTML = `<p>${data.error}</p>`;
-                } else {
-                    displayProductBuyers(data);
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                resultsContainer.innerHTML = '<p>An error occurred while fetching product buyers.</p>';
-            });
+  const requestJson = async (action, parameters) => {
+    if (activeRequest) {
+      activeRequest.abort();
     }
 
-    function displayProductBuyers(buyers) {
-        const productbuyers_translation_first_name = 'First Name';
-        const productbuyers_translation_last_name = 'Last Name';
-        const productbuyers_translation_order_id = 'Order ID';
-        const productbuyers_translation_order_link = 'Order Link';
-        const productbuyers_translation_view_order = 'View Order';
+    const requestController = new AbortController();
+    activeRequest = requestController;
 
-        let html = '<table class="table table-striped">';
-        html += `
-            <thead>
-                <tr>
-                    <th>${productbuyers_translation_first_name}</th>
-                    <th>${productbuyers_translation_last_name}</th>
-                    <th>${productbuyers_translation_order_id}</th>
-                    <th>${productbuyers_translation_order_link}</th>
-                </tr>
-            </thead>
-            <tbody>
-        `;
+    try {
+      const response = await fetch(createApiUrl(action, parameters), {
+        credentials: 'same-origin',
+        headers: {
+          Accept: 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        signal: requestController.signal,
+      });
+      const payload = await response.json();
 
-        buyers.forEach(buyer => {
-            const getOrderLink = (orderId) => {
-                return orderLinknew.replace('/0/', `/${orderId}/`);
-            };
+      if (!response.ok || payload.success !== true) {
+        throw new Error(payload.error || translations.requestError);
+      }
 
-            const orderLink = getOrderLink(buyer.id_order);
-            html += `
-                <tr>
-                    <td>${buyer.firstname}</td>
-                    <td>${buyer.lastname}</td>
-                    <td>${buyer.id_order}</td>
-                    <td><a href="${orderLink}" class="btn btn-secondary" target="_blank">${productbuyers_translation_view_order}</a></td>
-                </tr>
-            `;
+      return payload;
+    } finally {
+      if (activeRequest === requestController) {
+        activeRequest = null;
+      }
+    }
+  };
+
+  const appendCell = (row, value) => {
+    row.appendChild(createElement('td', {text: value}));
+  };
+
+  const createHeaderCell = (label) => {
+    return createElement('th', {text: label});
+  };
+
+  const createSortableHeader = (label, key, onSort) => {
+    const cell = createElement('th');
+    const button = createElement('button', {
+      className: 'productbuyers-sort',
+    });
+    const labelNode = createElement('span', {text: label});
+    const icon = createElement('span', {
+      className: 'productbuyers-sort-icon',
+    });
+
+    button.type = 'button';
+    button.dataset.key = key;
+    button.setAttribute('aria-sort', 'none');
+    button.append(labelNode, icon);
+    button.addEventListener('click', () => onSort(button));
+    cell.appendChild(button);
+
+    return cell;
+  };
+
+  const renderLimitWarning = (message) => {
+    resultsContainer.appendChild(
+      createElement('div', {
+        className: 'alert alert-warning productbuyers-limit-warning',
+        text: message,
+      }),
+    );
+  };
+
+  const compareValues = (left, right, key) => {
+    if (key === 'purchase_count') {
+      return Number(left[key]) - Number(right[key]);
+    }
+
+    return String(left[key] || '').localeCompare(
+      String(right[key] || ''),
+      document.documentElement.lang || undefined,
+      {sensitivity: 'base'},
+    );
+  };
+
+  const renderProductTable = (products, truncated) => {
+    const sortedProducts = [...products];
+    const table = createElement('table', {
+      className: 'table table-striped table-hover productbuyers-table',
+    });
+    const head = createElement('thead');
+    const headerRow = createElement('tr');
+    const body = createElement('tbody');
+
+    const renderRows = () => {
+      body.replaceChildren();
+
+      sortedProducts.forEach((product) => {
+        const row = createElement('tr');
+        const actionCell = createElement('td');
+        const selectButton = createElement('button', {
+          className: 'btn btn-primary btn-sm',
+          text: translations.select,
         });
 
-        html += '</tbody></table>';
-        resultsContainer.innerHTML = html;
+        selectButton.type = 'button';
+        selectButton.addEventListener('click', () => loadBuyers(product.id_product));
+        appendCell(row, product.name);
+        appendCell(row, product.reference || '—');
+        appendCell(row, product.purchase_count);
+        actionCell.appendChild(selectButton);
+        row.appendChild(actionCell);
+        body.appendChild(row);
+      });
+    };
+
+    const sort = (button) => {
+      const currentDirection = button.getAttribute('aria-sort');
+      const direction = currentDirection === 'ascending' ? 'descending' : 'ascending';
+
+      table.querySelectorAll('.productbuyers-sort').forEach((sortButton) => {
+        sortButton.setAttribute('aria-sort', 'none');
+        sortButton.querySelector('.productbuyers-sort-icon').textContent = '';
+      });
+
+      button.setAttribute('aria-sort', direction);
+      button.querySelector('.productbuyers-sort-icon').textContent =
+        direction === 'ascending' ? '↑' : '↓';
+
+      const factor = direction === 'ascending' ? 1 : -1;
+      sortedProducts.sort(
+        (left, right) => compareValues(left, right, button.dataset.key) * factor,
+      );
+      renderRows();
+    };
+
+    headerRow.append(
+      createSortableHeader(translations.productName, 'name', sort),
+      createSortableHeader(translations.reference, 'reference', sort),
+      createSortableHeader(translations.purchaseCount, 'purchase_count', sort),
+      createHeaderCell(translations.select),
+    );
+    head.appendChild(headerRow);
+    table.append(head, body);
+    renderRows();
+    resultsContainer.replaceChildren(table);
+
+    if (truncated) {
+      renderLimitWarning(translations.searchLimit);
     }
+  };
+
+  const renderBuyerTable = (buyers, truncated) => {
+    const table = createElement('table', {
+      className: 'table table-striped table-hover productbuyers-table',
+    });
+    const head = createElement('thead');
+    const headerRow = createElement('tr');
+    const body = createElement('tbody');
+
+    headerRow.append(
+      createHeaderCell(translations.firstName),
+      createHeaderCell(translations.lastName),
+      createHeaderCell(translations.orderReference),
+      createHeaderCell(translations.orderDate),
+      createHeaderCell(translations.viewOrder),
+    );
+
+    buyers.forEach((buyer) => {
+      const row = createElement('tr');
+      const actionCell = createElement('td');
+      const orderLink = createElement('a', {
+        className: 'btn btn-secondary btn-sm',
+        text: translations.viewOrder,
+      });
+
+      orderLink.href = buyer.order_url;
+      orderLink.target = '_blank';
+      orderLink.rel = 'noopener noreferrer';
+      appendCell(row, buyer.firstname);
+      appendCell(row, buyer.lastname);
+      appendCell(row, buyer.order_reference || buyer.id_order);
+      appendCell(row, buyer.date_add);
+      actionCell.appendChild(orderLink);
+      row.appendChild(actionCell);
+      body.appendChild(row);
+    });
+
+    head.appendChild(headerRow);
+    table.append(head, body);
+    resultsContainer.replaceChildren(table);
+
+    if (truncated) {
+      renderLimitWarning(translations.buyerLimit);
+    }
+  };
+
+  const loadBuyers = async (productId) => {
+    renderMessage(translations.loadingBuyers, 'info');
+
+    try {
+      const payload = await requestJson('ProductBuyers', {
+        id_product: productId,
+      });
+
+      if (payload.data.length === 0) {
+        renderMessage(translations.noBuyers, 'info');
+        return;
+      }
+
+      renderBuyerTable(payload.data, Boolean(payload.meta && payload.meta.truncated));
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        renderMessage(error.message || translations.requestError, 'danger');
+      }
+    }
+  };
+
+  const searchProducts = async () => {
+    const query = productInput.value.trim();
+
+    if (!query) {
+      renderMessage(translations.emptyQuery, 'warning');
+      productInput.focus();
+      return;
+    }
+
+    searchButton.disabled = true;
+    resultsContainer.setAttribute('aria-busy', 'true');
+    renderMessage(translations.searching, 'info');
+
+    try {
+      const payload = await requestJson('ProductSearch', {query});
+
+      if (payload.data.length === 0) {
+        renderMessage(translations.noProducts, 'info');
+        return;
+      }
+
+      renderProductTable(payload.data, Boolean(payload.meta && payload.meta.truncated));
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        renderMessage(error.message || translations.requestError, 'danger');
+      }
+    } finally {
+      searchButton.disabled = false;
+      resultsContainer.removeAttribute('aria-busy');
+    }
+  };
+
+  searchButton.addEventListener('click', searchProducts);
+  productInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      searchProducts();
+    }
+  });
 });
