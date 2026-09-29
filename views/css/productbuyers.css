@@ -7,8 +7,27 @@
   opacity: 0.75;
 }
 
+.productbuyers-actions,
+.productbuyers-table-navigation {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.productbuyers-table-navigation {
+  justify-content: flex-end;
+  margin-bottom: 0.75rem;
+}
+
+.productbuyers-back-button {
+  margin-inline-start: 0.5rem;
+}
+
 .productbuyers-table {
   margin-bottom: 0;
+  table-layout: auto;
+  width: 100%;
 }
 
 .productbuyers-table th,
@@ -26,6 +45,7 @@
   font: inherit;
   font-weight: 600;
   gap: 0.35rem;
+  min-height: 44px;
   padding: 0;
   text-align: left;
 }
@@ -37,11 +57,41 @@
 
 .productbuyers-sort-icon {
   display: inline-block;
-  min-width: 1em;
+  border-block-end: 5px solid currentColor;
+  border-inline: 4px solid transparent;
+  opacity: 0.45;
+  transform: translateY(-1px);
+}
+
+.productbuyers-table th[aria-sort='ascending'] .productbuyers-sort-icon {
+  opacity: 1;
+}
+
+.productbuyers-table th[aria-sort='descending'] .productbuyers-sort-icon {
+  opacity: 1;
+  transform: rotate(180deg);
 }
 
 .productbuyers-limit-warning {
   margin-top: 1rem;
+}
+
+.productbuyers-results .productbuyers-actions .btn,
+.productbuyers-results .productbuyers-table-navigation .btn,
+.productbuyers-results .productbuyers-table .btn {
+  min-height: 44px;
+}
+
+.productbuyers-table td {
+  overflow-wrap: anywhere;
+}
+
+.productbuyers-table td:nth-last-child(2) {
+  font-variant-numeric: tabular-nums;
+}
+
+.productbuyers-table .btn {
+  white-space: normal;
 }
 
 @media (max-width: 767px) {

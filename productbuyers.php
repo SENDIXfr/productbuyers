@@ -31,7 +31,7 @@ class ProductBuyers extends Module
     {
         $this->name = 'productbuyers';
         $this->tab = 'administration';
-        $this->version = '1.0.0';
+        $this->version = '1.0.1';
         $this->author = 'SENDIX';
         $this->ps_versions_compliancy = [
             'min' => '8.0.0',
@@ -107,6 +107,16 @@ class ProductBuyers extends Module
                         [],
                         'Modules.Productbuyers.Admin'
                     ),
+                    'sessionExpired' => $this->trans(
+                        'Your session has expired. Reload the page and try again.',
+                        [],
+                        'Modules.Productbuyers.Admin'
+                    ),
+                    'accessDenied' => $this->trans(
+                        'You do not have permission to view this information.',
+                        [],
+                        'Modules.Productbuyers.Admin'
+                    ),
                     'emptyQuery' => $this->trans(
                         'Enter a product name or reference.',
                         [],
@@ -141,6 +151,22 @@ class ProductBuyers extends Module
                         [],
                         'Modules.Productbuyers.Admin'
                     ),
+                    'backToProducts' => $this->trans(
+                        'Back to product results',
+                        [],
+                        'Modules.Productbuyers.Admin'
+                    ),
+                    'retry' => $this->trans('Try again', [], 'Modules.Productbuyers.Admin'),
+                    'buyersCaption' => $this->trans(
+                        'Customers and validated orders containing this product',
+                        [],
+                        'Modules.Productbuyers.Admin'
+                    ),
+                    'productsCaption' => $this->trans(
+                        'Products matching your search',
+                        [],
+                        'Modules.Productbuyers.Admin'
+                    ),
                 ],
             ],
         ]);
@@ -169,6 +195,14 @@ class ProductBuyers extends Module
         }
 
         $this->registerBackOfficeAssets();
+
+        $this->context->smarty->assign([
+            'productbuyers_results_label' => $this->trans(
+                'Product search results',
+                [],
+                'Modules.Productbuyers.Admin'
+            ),
+        ]);
 
         return $this->renderForm()
             . $this->display(__FILE__, 'views/templates/admin/configure.tpl');
@@ -205,6 +239,12 @@ class ProductBuyers extends Module
                         'required' => true,
                         'id' => 'product_name',
                         'class' => 'fixed-width-xxl',
+                        'maxlength' => 100,
+                        'hint' => $this->trans(
+                            'Search by product name or reference. You can enter up to 100 characters.',
+                            [],
+                            'Modules.Productbuyers.Admin'
+                        ),
                     ],
                 ],
                 'buttons' => [
@@ -247,9 +287,9 @@ class ProductBuyers extends Module
 
     public function ajaxProcessProductSearch()
     {
-        $query = trim((string) Tools::getValue('query'));
+        $query = Tools::getValue('query');
 
-        if ($query === '') {
+        if (!is_string($query) || trim($query) === '') {
             $this->sendJsonResponse(
                 [
                     'success' => false,
@@ -263,8 +303,13 @@ class ProductBuyers extends Module
             );
         }
 
+        $query = trim($query);
         $query = Tools::substr($query, 0, 100);
-        $escapedQuery = pSQL($query);
+        $escapedQuery = pSQL(str_replace(
+            ['\\', '%', '_'],
+            ['\\\\', '\\%', '\\_'],
+            $query
+        ));
         $shopId = (int) $this->context->shop->id;
         $languageId = (int) $this->context->language->id;
         $resultLimit = self::MAX_SEARCH_RESULTS + 1;
@@ -274,7 +319,7 @@ class ProductBuyers extends Module
                 p.id_product,
                 pl.name,
                 p.reference,
-                COUNT(DISTINCT IF(o.valid = 1, od.id_order, NULL)) AS purchase_count
+                COUNT(DISTINCT o.id_order) AS purchase_count
             FROM `' . _DB_PREFIX_ . 'product` p
             INNER JOIN `' . _DB_PREFIX_ . 'product_shop` ps
                 ON ps.id_product = p.id_product
@@ -288,8 +333,9 @@ class ProductBuyers extends Module
             LEFT JOIN `' . _DB_PREFIX_ . 'orders` o
                 ON o.id_order = od.id_order
                 AND o.id_shop = ' . $shopId . '
-            WHERE pl.name LIKE \'%' . $escapedQuery . '%\'
-                OR p.reference LIKE \'%' . $escapedQuery . '%\'
+                AND o.valid = 1
+            WHERE (pl.name LIKE \'%' . $escapedQuery . '%\'
+                OR p.reference LIKE \'%' . $escapedQuery . '%\')
             GROUP BY p.id_product, pl.name, p.reference
             ORDER BY pl.name ASC
             LIMIT ' . $resultLimit;
@@ -332,9 +378,14 @@ class ProductBuyers extends Module
 
     public function ajaxProcessProductBuyers()
     {
-        $productId = (int) Tools::getValue('id_product');
+        $rawProductId = Tools::getValue('id_product');
+        $productId = filter_var(
+            is_string($rawProductId) || is_int($rawProductId) ? $rawProductId : false,
+            FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => 1]]
+        );
 
-        if ($productId <= 0) {
+        if ($productId === false) {
             $this->sendJsonResponse(
                 [
                     'success' => false,
@@ -345,6 +396,27 @@ class ProductBuyers extends Module
         }
 
         $shopId = (int) $this->context->shop->id;
+        $productBelongsToShop = (bool) Db::getInstance()->getValue(
+            'SELECT 1
+            FROM `' . _DB_PREFIX_ . 'product_shop`
+            WHERE id_product = ' . $productId . '
+                AND id_shop = ' . $shopId
+        );
+
+        if (!$productBelongsToShop) {
+            $this->sendJsonResponse(
+                [
+                    'success' => false,
+                    'error' => $this->trans(
+                        'This product is not available in the current shop.',
+                        [],
+                        'Modules.Productbuyers.Admin'
+                    ),
+                ],
+                404
+            );
+        }
+
         $resultLimit = self::MAX_BUYER_RESULTS + 1;
 
         $sql = '
@@ -355,6 +427,9 @@ class ProductBuyers extends Module
                 o.reference AS order_reference,
                 o.date_add
             FROM `' . _DB_PREFIX_ . 'order_detail` od
+            INNER JOIN `' . _DB_PREFIX_ . 'product_shop` ps
+                ON ps.id_product = od.product_id
+                AND ps.id_shop = ' . $shopId . '
             INNER JOIN `' . _DB_PREFIX_ . 'orders` o
                 ON o.id_order = od.id_order
                 AND o.id_shop = ' . $shopId . '
@@ -389,7 +464,7 @@ class ProductBuyers extends Module
             $result['firstname'] = (string) $result['firstname'];
             $result['lastname'] = (string) $result['lastname'];
             $result['order_reference'] = (string) $result['order_reference'];
-            $result['date_add'] = (string) $result['date_add'];
+            $result['date_add'] = Tools::displayDate($result['date_add'], true);
             $result['order_url'] = $this->context->link->getAdminLink(
                 'AdminOrders',
                 true,

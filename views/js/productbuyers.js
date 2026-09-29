@@ -18,6 +18,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const translations = config.translations || {};
   let activeRequest = null;
+  let cachedProducts = [];
+  let cachedSearchWasTruncated = false;
 
   const createElement = (tagName, options = {}) => {
     const element = document.createElement(tagName);
@@ -40,6 +42,58 @@ document.addEventListener('DOMContentLoaded', () => {
         text: message,
       }),
     );
+  };
+
+  const renderError = (message, retryAction, backAction) => {
+    const alert = createElement('div', {className: 'alert alert-danger'});
+    const text = createElement('p', {text: message});
+    const actions = createElement('div', {className: 'productbuyers-actions'});
+
+    if (typeof retryAction === 'function') {
+      const retryButton = createElement('button', {
+        className: 'btn btn-primary btn-sm',
+        text: translations.retry,
+      });
+      retryButton.type = 'button';
+      retryButton.addEventListener('click', retryAction);
+      actions.appendChild(retryButton);
+    }
+
+    if (typeof backAction === 'function') {
+      const backButton = createElement('button', {
+        className: 'btn btn-secondary btn-sm',
+        text: translations.backToProducts,
+      });
+      backButton.type = 'button';
+      backButton.addEventListener('click', backAction);
+      actions.appendChild(backButton);
+    }
+
+    alert.append(text, actions);
+    resultsContainer.replaceChildren(alert);
+    const recoveryButton = alert.querySelector('button');
+    if (recoveryButton) {
+      recoveryButton.focus();
+    }
+  };
+
+  const renderLoading = (message, backAction) => {
+    const alert = createElement('div', {className: 'alert alert-info'});
+    alert.setAttribute('role', 'status');
+    alert.appendChild(createElement('span', {text: message}));
+
+    if (typeof backAction === 'function') {
+      const backButton = createElement('button', {
+        className: 'btn btn-secondary btn-sm productbuyers-back-button',
+        text: translations.backToProducts,
+      });
+      backButton.type = 'button';
+      backButton.addEventListener('click', backAction);
+      alert.appendChild(backButton);
+    }
+
+    resultsContainer.replaceChildren(alert);
+    resultsContainer.setAttribute('aria-busy', 'true');
   };
 
   const createApiUrl = (action, parameters = {}) => {
@@ -71,10 +125,19 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         signal: requestController.signal,
       });
-      const payload = await response.json();
 
-      if (!response.ok || payload.success !== true) {
-        throw new Error(payload.error || translations.requestError);
+      if (response.status === 401) {
+        throw new Error(translations.sessionExpired || translations.requestError);
+      }
+
+      if (response.status === 403) {
+        throw new Error(translations.accessDenied || translations.requestError);
+      }
+
+      const payload = await response.json().catch(() => null);
+
+      if (!payload || !response.ok || payload.success !== true) {
+        throw new Error((payload && payload.error) || translations.requestError);
       }
 
       return payload;
@@ -90,7 +153,9 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const createHeaderCell = (label) => {
-    return createElement('th', {text: label});
+    const cell = createElement('th', {text: label});
+    cell.scope = 'col';
+    return cell;
   };
 
   const createSortableHeader = (label, key, onSort) => {
@@ -102,12 +167,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const icon = createElement('span', {
       className: 'productbuyers-sort-icon',
     });
+    icon.setAttribute('aria-hidden', 'true');
 
     button.type = 'button';
     button.dataset.key = key;
-    button.setAttribute('aria-sort', 'none');
     button.append(labelNode, icon);
-    button.addEventListener('click', () => onSort(button));
+    cell.scope = 'col';
+    cell.setAttribute('aria-sort', 'none');
+    button.addEventListener('click', () => onSort(cell, button));
     cell.appendChild(button);
 
     return cell;
@@ -142,6 +209,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const head = createElement('thead');
     const headerRow = createElement('tr');
     const body = createElement('tbody');
+    const caption = table.createCaption();
+    caption.className = 'sr-only';
+    caption.textContent = translations.productsCaption;
 
     const renderRows = () => {
       body.replaceChildren();
@@ -155,7 +225,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         selectButton.type = 'button';
-        selectButton.addEventListener('click', () => loadBuyers(product.id_product));
+        selectButton.addEventListener('click', () => loadBuyers(product.id_product, selectButton));
         appendCell(row, product.name);
         appendCell(row, product.reference || '—');
         appendCell(row, product.purchase_count);
@@ -165,18 +235,15 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     };
 
-    const sort = (button) => {
-      const currentDirection = button.getAttribute('aria-sort');
+    const sort = (headerCell, button) => {
+      const currentDirection = headerCell.getAttribute('aria-sort');
       const direction = currentDirection === 'ascending' ? 'descending' : 'ascending';
 
       table.querySelectorAll('.productbuyers-sort').forEach((sortButton) => {
-        sortButton.setAttribute('aria-sort', 'none');
-        sortButton.querySelector('.productbuyers-sort-icon').textContent = '';
+        sortButton.closest('th').setAttribute('aria-sort', 'none');
       });
 
-      button.setAttribute('aria-sort', direction);
-      button.querySelector('.productbuyers-sort-icon').textContent =
-        direction === 'ascending' ? '↑' : '↓';
+      headerCell.setAttribute('aria-sort', direction);
 
       const factor = direction === 'ascending' ? 1 : -1;
       sortedProducts.sort(
@@ -208,6 +275,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const head = createElement('thead');
     const headerRow = createElement('tr');
     const body = createElement('tbody');
+    const caption = table.createCaption();
+    caption.className = 'sr-only';
+    caption.textContent = translations.buyersCaption;
+    const navigation = createElement('div', {className: 'productbuyers-table-navigation'});
+    const backButton = createElement('button', {
+      className: 'btn btn-secondary btn-sm productbuyers-back-button',
+      text: translations.backToProducts,
+    });
+    backButton.type = 'button';
+    backButton.addEventListener('click', showCachedProducts);
+    navigation.appendChild(backButton);
 
     headerRow.append(
       createHeaderCell(translations.firstName),
@@ -239,15 +317,41 @@ document.addEventListener('DOMContentLoaded', () => {
 
     head.appendChild(headerRow);
     table.append(head, body);
-    resultsContainer.replaceChildren(table);
+    resultsContainer.replaceChildren(navigation, table);
+    resultsContainer.removeAttribute('aria-busy');
+    backButton.focus();
 
     if (truncated) {
       renderLimitWarning(translations.buyerLimit);
     }
   };
 
-  const loadBuyers = async (productId) => {
-    renderMessage(translations.loadingBuyers, 'info');
+  const showCachedProducts = () => {
+    if (activeRequest) {
+      activeRequest.abort();
+      activeRequest = null;
+    }
+
+    resultsContainer.removeAttribute('aria-busy');
+
+    if (cachedProducts.length > 0) {
+      renderProductTable(cachedProducts, cachedSearchWasTruncated);
+      const firstAction = resultsContainer.querySelector('.productbuyers-table tbody button');
+      if (firstAction) {
+        firstAction.focus();
+      }
+    } else {
+      productInput.focus();
+      productInput.select();
+    }
+  };
+
+  const loadBuyers = async (productId, triggerButton) => {
+    if (triggerButton) {
+      triggerButton.disabled = true;
+    }
+
+    renderLoading(translations.loadingBuyers, showCachedProducts);
 
     try {
       const payload = await requestJson('ProductBuyers', {
@@ -256,18 +360,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (payload.data.length === 0) {
         renderMessage(translations.noBuyers, 'info');
+        const backButton = createElement('button', {
+          className: 'btn btn-secondary btn-sm productbuyers-back-button',
+          text: translations.backToProducts,
+        });
+        backButton.type = 'button';
+        backButton.addEventListener('click', showCachedProducts);
+        resultsContainer.firstElementChild.appendChild(backButton);
+        backButton.focus();
         return;
       }
 
       renderBuyerTable(payload.data, Boolean(payload.meta && payload.meta.truncated));
     } catch (error) {
       if (error.name !== 'AbortError') {
-        renderMessage(error.message || translations.requestError, 'danger');
+        const message = error instanceof TypeError
+          ? translations.requestError
+          : (error.message || translations.requestError);
+        renderError(message, () => loadBuyers(productId), showCachedProducts);
+      }
+    } finally {
+      if (triggerButton) {
+        triggerButton.disabled = false;
+      }
+      if (!activeRequest) {
+        resultsContainer.removeAttribute('aria-busy');
       }
     }
   };
 
   const searchProducts = async () => {
+    if (searchButton.disabled) {
+      return;
+    }
+
     const query = productInput.value.trim();
 
     if (!query) {
@@ -277,31 +403,39 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     searchButton.disabled = true;
-    resultsContainer.setAttribute('aria-busy', 'true');
-    renderMessage(translations.searching, 'info');
+    renderLoading(translations.searching);
 
     try {
       const payload = await requestJson('ProductSearch', {query});
 
       if (payload.data.length === 0) {
+        cachedProducts = [];
+        cachedSearchWasTruncated = false;
         renderMessage(translations.noProducts, 'info');
         return;
       }
 
+      cachedProducts = payload.data;
+      cachedSearchWasTruncated = Boolean(payload.meta && payload.meta.truncated);
       renderProductTable(payload.data, Boolean(payload.meta && payload.meta.truncated));
     } catch (error) {
       if (error.name !== 'AbortError') {
-        renderMessage(error.message || translations.requestError, 'danger');
+        const message = error instanceof TypeError
+          ? translations.requestError
+          : (error.message || translations.requestError);
+        renderError(message, searchProducts);
       }
     } finally {
       searchButton.disabled = false;
-      resultsContainer.removeAttribute('aria-busy');
+      if (!activeRequest) {
+        resultsContainer.removeAttribute('aria-busy');
+      }
     }
   };
 
   searchButton.addEventListener('click', searchProducts);
   productInput.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') {
+    if (event.key === 'Enter' && !searchButton.disabled) {
       event.preventDefault();
       searchProducts();
     }
